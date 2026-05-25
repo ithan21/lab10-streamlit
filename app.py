@@ -1,38 +1,35 @@
 import streamlit as st
 from huggingface_hub import InferenceClient
 from PIL import Image
-import time
 
 HF_TOKEN = "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"
 
-# Naglagay ng timeout at nag-enable ng detailed errors
+# 120 seconds timeout para makapag-load kung nakatulog ang model
 client = InferenceClient(token=HF_TOKEN, timeout=120)
 
 def get_chat_response(prompt):
     full_prompt = f"Please answer concisely: {prompt}"
     try:
-        # Ito ang nag-aalert sa HF na "wag mong i-timeout kung naglo-load ka pa"
+        # Tinanggal na natin ang wait_for_model
         response = client.text_generation(
             model="google/flan-t5-large", 
             prompt=full_prompt, 
-            max_new_tokens=100,
-            wait_for_model=True 
+            max_new_tokens=100
         )
         return response
     except Exception as e:
-        # Ipinapakita ang TOTOONG error kasama ang klase nito (repr)
-        return f"EXACT ERROR: {repr(e)}"
+        return f"Error: {repr(e)}"
 
 def generate_image(prompt):
     try:
+        # Tinanggal na rin dito
         image = client.text_to_image(
             prompt=prompt, 
-            model="runwayml/stable-diffusion-v1-5",
-            wait_for_model=True
+            model="runwayml/stable-diffusion-v1-5"
         )
         return image
     except Exception as e:
-        st.error(f"EXACT IMAGE ERROR: {repr(e)}")
+        st.error(f"Error: {repr(e)}")
         return None
 
 # --- UI DESIGN ---
@@ -53,7 +50,7 @@ with tab1:
         st.session_state.chat_history.append({"role": "user", "content": user_input})
         with st.chat_message("user"):
             st.write(user_input)
-        with st.spinner("Connecting to AI (may take 1-2 mins if waking up)..."):
+        with st.spinner("Thinking... (Please wait 1-2 mins if the model is waking up)..."):
             bot_reply = get_chat_response(user_input)
         st.session_state.chat_history.append({"role": "assistant", "content": bot_reply})
         with st.chat_message("assistant"):
@@ -63,7 +60,7 @@ with tab2:
     img_prompt = st.text_area("Describe the image you want to create:", height=100, placeholder="e.g., A cute cat astronaut in space")
     if st.button("🎨 Generate Image", use_container_width=True, type="primary"):
         if img_prompt:
-            with st.spinner("Generating image (may take 1-2 mins if waking up)..."):
+            with st.spinner("Generating image... (Please wait 1-2 mins if waking up)..."):
                 img = generate_image(img_prompt)
                 if img:
                     st.image(img, caption=img_prompt, use_column_width=True)
