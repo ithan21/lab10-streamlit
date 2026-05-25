@@ -1,47 +1,70 @@
 import streamlit as st
+import time
 from huggingface_hub import InferenceClient
-from PIL import Image
 
 HF_TOKEN = "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"
 
 client = InferenceClient(token=HF_TOKEN, timeout=120)
 
+def is_model_loading(error):
+    """Check if error is because model is loading/waking up"""
+    msg = str(error).lower()
+    return any(keyword in msg for keyword in [
+        "loading", "503", "unavailable", "wake", "sleep", 
+        "stopiteration", "currently loaded", "warm"
+    ])
+
 def get_chat_response(prompt):
-    try:
-        response = client.text_generation(
-            model="google/flan-t5-large", 
-            prompt=f"Answer concisely: {prompt}", 
-            max_new_tokens=100,
-            do_sample=False  # This prevents StopIteration!
-        )
-        if not response or response.strip() == "":
-            return "I couldn't generate a response. Please try rephrasing."
-        return response
-    except StopIteration:
-        return "⏳ Model is waking up. Please wait 30 seconds and try again."
-    except Exception as e:
-        error_str = str(e).lower()
-        if "loading" in error_str or "503" in error_str:
-            return "⏳ Model is waking up. Please wait 30 seconds and try again."
-        return f"Error: {repr(e)}"
+    max_retries = 6  # Try up to 6 times (3 minutes total)
+    
+    for attempt in range(max_retries):
+        try:
+            response = client.text_generation(
+                model="google/flan-t5-large", 
+                prompt=f"Answer concisely: {prompt}", 
+                max_new_tokens=100,
+                do_sample=False
+            )
+            if response and response.strip():
+                return response
+            return "I couldn't generate a response. Please try again."
+            
+        except Exception as e:
+            if is_model_loading(e) and attempt < max_retries - 1:
+                # Show waiting progress
+                wait_sec = 30
+                progress = st.progress(0, text=f"⏳ Model is waking up... (attempt {attempt+1}/{max_retries})")
+                for i in range(wait_sec):
+                    time.sleep(1)
+                    progress.progress((i + 1) / wait_sec, text=f"⏳ Waking up model... {wait_sec - i}s remaining")
+                progress.empty()
+                continue  # Retry
+            else:
+                return f"Error: Model took too long to wake up. Please try again later."
 
 def generate_image(prompt):
-    try:
-        image = client.text_to_image(
-            prompt=prompt, 
-            model="runwayml/stable-diffusion-v1-5"
-        )
-        return image
-    except StopIteration:
-        st.error("⏳ Model is waking up. Wait 30 seconds and try again.")
-        return None
-    except Exception as e:
-        error_str = str(e).lower()
-        if "loading" in error_str or "503" in error_str:
-            st.error("⏳ Model is waking up. Wait 30 seconds and try again.")
-        else:
-            st.error(f"Error: {repr(e)}")
-        return None
+    max_retries = 6
+    
+    for attempt in range(max_retries):
+        try:
+            image = client.text_to_image(
+                prompt=prompt, 
+                model="runwayml/stable-diffusion-v1-5"
+            )
+            return image
+            
+        except Exception as e:
+            if is_model_loading(e) and attempt < max_retries - 1:
+                wait_sec = 30
+                progress = st.progress(0, text=f"⏳ Image model is waking up... (attempt {attempt+1}/{max_retries})")
+                for i in range(wait_sec):
+                    time.sleep(1)
+                    progress.progress((i + 1) / wait_sec, text=f"⏳ Waking up model... {wait_sec - i}s remaining")
+                progress.empty()
+                continue
+            else:
+                st.error("❌ Model took too long. Please try again later.")
+                return None
 
 # --- UI DESIGN ---
 st.set_page_config(page_title="Lab 10 AI", page_icon="🤖")
@@ -80,7 +103,7 @@ with tab2:
     
     if st.button("🎨 Generate Image", use_container_width=True, type="primary"):
         if img_prompt:
-            with st.spinner("Generating image..."):
+            with st.spinner("Starting..."):
                 img = generate_image(img_prompt)
                 if img:
                     st.image(img, caption=img_prompt, use_column_width=True)
