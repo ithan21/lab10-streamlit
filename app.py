@@ -1,70 +1,46 @@
 import streamlit as st
-import time
-from huggingface_hub import InferenceClient
+import requests
+import urllib.parse
+from groq import Groq
+from PIL import Image
+import io
 
-HF_TOKEN = "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"
+# ==========================================
+# STEP 4: ILAGAY MO ANG COPIED API KEY DITO
+# ==========================================
+GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
 
-client = InferenceClient(token=HF_TOKEN, timeout=120)
-
-def is_model_loading(error):
-    """Check if error is because model is loading/waking up"""
-    msg = str(error).lower()
-    return any(keyword in msg for keyword in [
-        "loading", "503", "unavailable", "wake", "sleep", 
-        "stopiteration", "currently loaded", "warm"
-    ])
+groq_client = Groq(api_key=GROQ_API_KEY)
 
 def get_chat_response(prompt):
-    max_retries = 6  # Try up to 6 times (3 minutes total)
-    
-    for attempt in range(max_retries):
-        try:
-            response = client.text_generation(
-                model="google/flan-t5-large", 
-                prompt=f"Answer concisely: {prompt}", 
-                max_new_tokens=100,
-                do_sample=False
-            )
-            if response and response.strip():
-                return response
-            return "I couldn't generate a response. Please try again."
-            
-        except Exception as e:
-            if is_model_loading(e) and attempt < max_retries - 1:
-                # Show waiting progress
-                wait_sec = 30
-                progress = st.progress(0, text=f"⏳ Model is waking up... (attempt {attempt+1}/{max_retries})")
-                for i in range(wait_sec):
-                    time.sleep(1)
-                    progress.progress((i + 1) / wait_sec, text=f"⏳ Waking up model... {wait_sec - i}s remaining")
-                progress.empty()
-                continue  # Retry
-            else:
-                return f"Error: Model took too long to wake up. Please try again later."
+    try:
+        response = groq_client.chat.completions.create(
+            model="llama-3.1-8b-instant",
+            messages=[
+                {"role": "system", "content": "Answer concisely."},
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=100
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        return f"Error: {repr(e)}"
 
 def generate_image(prompt):
-    max_retries = 6
-    
-    for attempt in range(max_retries):
-        try:
-            image = client.text_to_image(
-                prompt=prompt, 
-                model="runwayml/stable-diffusion-v1-5"
-            )
-            return image
-            
-        except Exception as e:
-            if is_model_loading(e) and attempt < max_retries - 1:
-                wait_sec = 30
-                progress = st.progress(0, text=f"⏳ Image model is waking up... (attempt {attempt+1}/{max_retries})")
-                for i in range(wait_sec):
-                    time.sleep(1)
-                    progress.progress((i + 1) / wait_sec, text=f"⏳ Waking up model... {wait_sec - i}s remaining")
-                progress.empty()
-                continue
-            else:
-                st.error("❌ Model took too long. Please try again later.")
-                return None
+    try:
+        encoded_prompt = urllib.parse.quote(prompt)
+        # Pollinations.ai - Libre, walang API key, walang tulog!
+        image_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=512&height=512&nologo=true"
+        
+        img_response = requests.get(image_url)
+        if img_response.status_code == 200:
+            return Image.open(io.BytesIO(img_response.content))
+        else:
+            st.error("Failed to generate image.")
+            return None
+    except Exception as e:
+        st.error(f"Error: {repr(e)}")
+        return None
 
 # --- UI DESIGN ---
 st.set_page_config(page_title="Lab 10 AI", page_icon="🤖")
@@ -103,7 +79,7 @@ with tab2:
     
     if st.button("🎨 Generate Image", use_container_width=True, type="primary"):
         if img_prompt:
-            with st.spinner("Starting..."):
+            with st.spinner("Generating image..."):
                 img = generate_image(img_prompt)
                 if img:
                     st.image(img, caption=img_prompt, use_column_width=True)
@@ -111,4 +87,4 @@ with tab2:
             st.warning("Please type a description first.")
 
 st.divider()
-st.caption("Made with Streamlit | AI Models powered by Hugging Face API")
+st.caption("Made with Streamlit | Chat powered by Groq | Image powered by Pollinations.ai")
