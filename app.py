@@ -1,38 +1,51 @@
 import streamlit as st
 from huggingface_hub import InferenceClient
 from PIL import Image
+import time
 
 # Direktang token
 HF_TOKEN = "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"
 
-# Gumagamit ng official HF client (mas maganda ang connection)
+# Gumagamit ng official HF client
 client = InferenceClient(token=HF_TOKEN)
 
 # --- FUNCTIONS ---
 def get_chat_response(prompt):
-    try:
-        # I-wrap sa prompt para mas maganda ang sagot
-        full_prompt = f"Please answer concisely: {prompt}"
-        response = client.text_generation(
-            model="google/flan-t5-large",
-            prompt=full_prompt,
-            max_new_tokens=100
-        )
-        return response
-    except Exception as e:
-        return f"⏳ The AI model is waking up. Please try again in 20 seconds. (Error: {str(e)[:50]})"
+    """May auto-retry para sa paggising ng model"""
+    full_prompt = f"Please answer concisely: {prompt}"
+    
+    # Subukan nang 3 beses
+    for attempt in range(3):
+        try:
+            response = client.text_generation(
+                model="google/flan-t5-large",
+                prompt=full_prompt,
+                max_new_tokens=100
+            )
+            return response
+        except Exception as e:
+            if attempt < 2:
+                time.sleep(15) # Hintay 15 seconds bago subukan ulit
+            else:
+                return f"⏳ The AI model is taking too long to wake up. Please type 'hello' again."
 
 def generate_image(prompt):
-    try:
-        # Automatic na nagre-return ng PIL Image ang bagong method
-        image = client.text_to_image(
-            prompt=prompt,
-            model="stabilityai/stable-diffusion-xl-base-1.0"
-        )
-        return image
-    except Exception as e:
-        st.error(f"⏳ The Image model is loading in the server. Please wait 20 seconds and click Generate again. ({str(e)[:50]})")
-        return None
+    """May auto-retry para sa paggising ng image model"""
+    
+    # Subukan nang 3 beses
+    for attempt in range(3):
+        try:
+            image = client.text_to_image(
+                prompt=prompt,
+                model="stabilityai/stable-diffusion-xl-base-1.0"
+            )
+            return image
+        except Exception as e:
+            if attempt < 2:
+                time.sleep(20) # Hintay 20 seconds bago subukan ulit
+            else:
+                st.error("⏳ The Image model is taking too long to wake up. Please click Generate again.")
+                return None
 
 # --- UI DESIGN ---
 st.set_page_config(page_title="Lab 10 AI", page_icon="🤖")
@@ -57,7 +70,7 @@ with tab1:
         with st.chat_message("user"):
             st.write(user_input)
 
-        with st.spinner("Thinking..."):
+        with st.spinner("Thinking... (If model is asleep, it will auto-retry for 45 seconds)"):
             bot_reply = get_chat_response(user_input)
 
         st.session_state.chat_history.append({"role": "assistant", "content": bot_reply})
@@ -70,7 +83,7 @@ with tab2:
     
     if st.button("🎨 Generate Image", use_container_width=True, type="primary"):
         if img_prompt:
-            with st.spinner("Generating image (might take 10-20 seconds on first try)..."):
+            with st.spinner("Generating image... (Auto-retrying if model is asleep)"):
                 img = generate_image(img_prompt)
                 if img:
                     st.image(img, caption=img_prompt, use_column_width=True)
