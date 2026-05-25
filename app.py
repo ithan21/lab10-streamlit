@@ -6,15 +6,14 @@ import time
 # Direktang token
 HF_TOKEN = "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"
 
-# Gumagamit ng official HF client
-client = InferenceClient(token=HF_TOKEN)
+# PINAKAIMPORTANTENG LAGAY DITO: timeout=120 (2 minutos na pahintulot para magising ang model)
+client = InferenceClient(token=HF_TOKEN, timeout=120)
 
 # --- FUNCTIONS ---
 def get_chat_response(prompt):
-    """May auto-retry para sa paggising ng model"""
+    """May auto-retry at extended timeout"""
     full_prompt = f"Please answer concisely: {prompt}"
     
-    # Subukan nang 3 beses
     for attempt in range(3):
         try:
             response = client.text_generation(
@@ -25,26 +24,26 @@ def get_chat_response(prompt):
             return response
         except Exception as e:
             if attempt < 2:
-                time.sleep(15) # Hintay 15 seconds bago subukan ulit
+                time.sleep(20) # Hintay 20 seconds bago subukan ulit
             else:
-                return f"⏳ The AI model is taking too long to wake up. Please type 'hello' again."
+                # Ipinapakita ang totoong error para malaman natin kung may iba pang problema
+                return f"Error details: {str(e)}"
 
 def generate_image(prompt):
-    """May auto-retry para sa paggising ng image model"""
+    """May auto-retry at extended timeout para sa image"""
     
-    # Subukan nang 3 beses
     for attempt in range(3):
         try:
             image = client.text_to_image(
                 prompt=prompt,
-                model="stabilityai/stable-diffusion-xl-base-1.0"
+                model="runwayml/stable-diffusion-v1-5" # Pinalitan ng mas mabilis na model
             )
             return image
         except Exception as e:
             if attempt < 2:
-                time.sleep(20) # Hintay 20 seconds bago subukan ulit
+                time.sleep(25)
             else:
-                st.error("⏳ The Image model is taking too long to wake up. Please click Generate again.")
+                st.error(f"Error: {str(e)}")
                 return None
 
 # --- UI DESIGN ---
@@ -70,7 +69,8 @@ with tab1:
         with st.chat_message("user"):
             st.write(user_input)
 
-        with st.spinner("Thinking... (If model is asleep, it will auto-retry for 45 seconds)"):
+        # Nag-warning sa user na maghintay
+        with st.spinner("⏳ Waking up the AI model... This might take 1-2 minutes on first try. Please wait..."):
             bot_reply = get_chat_response(user_input)
 
         st.session_state.chat_history.append({"role": "assistant", "content": bot_reply})
@@ -83,7 +83,7 @@ with tab2:
     
     if st.button("🎨 Generate Image", use_container_width=True, type="primary"):
         if img_prompt:
-            with st.spinner("Generating image... (Auto-retrying if model is asleep)"):
+            with st.spinner("⏳ Waking up the Image model... This might take 1-2 minutes. Please wait..."):
                 img = generate_image(img_prompt)
                 if img:
                     st.image(img, caption=img_prompt, use_column_width=True)
