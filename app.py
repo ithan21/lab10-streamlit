@@ -5,32 +5,37 @@ import time
 
 HF_TOKEN = "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"
 
+# Naglagay ng timeout at nag-enable ng detailed errors
 client = InferenceClient(token=HF_TOKEN, timeout=120)
 
 def get_chat_response(prompt):
     full_prompt = f"Please answer concisely: {prompt}"
-    for attempt in range(3):
-        try:
-            response = client.text_generation(model="google/flan-t5-large", prompt=full_prompt, max_new_tokens=100)
-            return response
-        except Exception as e:
-            if attempt < 2:
-                time.sleep(20)
-            else:
-                return f"Error: {str(e)}"
+    try:
+        # Ito ang nag-aalert sa HF na "wag mong i-timeout kung naglo-load ka pa"
+        response = client.text_generation(
+            model="google/flan-t5-large", 
+            prompt=full_prompt, 
+            max_new_tokens=100,
+            wait_for_model=True 
+        )
+        return response
+    except Exception as e:
+        # Ipinapakita ang TOTOONG error kasama ang klase nito (repr)
+        return f"EXACT ERROR: {repr(e)}"
 
 def generate_image(prompt):
-    for attempt in range(3):
-        try:
-            image = client.text_to_image(prompt=prompt, model="runwayml/stable-diffusion-v1-5")
-            return image
-        except Exception as e:
-            if attempt < 2:
-                time.sleep(25)
-            else:
-                st.error(f"Error: {str(e)}")
-                return None
+    try:
+        image = client.text_to_image(
+            prompt=prompt, 
+            model="runwayml/stable-diffusion-v1-5",
+            wait_for_model=True
+        )
+        return image
+    except Exception as e:
+        st.error(f"EXACT IMAGE ERROR: {repr(e)}")
+        return None
 
+# --- UI DESIGN ---
 st.set_page_config(page_title="Lab 10 AI", page_icon="🤖")
 st.title("🤖 Multi-Modal AI Application")
 st.caption("Lab 10.0 - Natural Language Processing (Large Language Models)")
@@ -48,7 +53,7 @@ with tab1:
         st.session_state.chat_history.append({"role": "user", "content": user_input})
         with st.chat_message("user"):
             st.write(user_input)
-        with st.spinner("⏳ Waking up AI... Please wait up to 1-2 minutes..."):
+        with st.spinner("Connecting to AI (may take 1-2 mins if waking up)..."):
             bot_reply = get_chat_response(user_input)
         st.session_state.chat_history.append({"role": "assistant", "content": bot_reply})
         with st.chat_message("assistant"):
@@ -58,7 +63,7 @@ with tab2:
     img_prompt = st.text_area("Describe the image you want to create:", height=100, placeholder="e.g., A cute cat astronaut in space")
     if st.button("🎨 Generate Image", use_container_width=True, type="primary"):
         if img_prompt:
-            with st.spinner("⏳ Generating image... Please wait up to 1-2 minutes..."):
+            with st.spinner("Generating image (may take 1-2 mins if waking up)..."):
                 img = generate_image(img_prompt)
                 if img:
                     st.image(img, caption=img_prompt, use_column_width=True)
