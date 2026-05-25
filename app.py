@@ -4,7 +4,7 @@ from PIL import Image
 import io
 
 # Kuhain ang token mula sa secrets.toml
-HF_TOKEN = st.secrets["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"]
+HF_TOKEN = "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"
 
 # --- FUNCTIONS ---
 def get_chat_response(prompt):
