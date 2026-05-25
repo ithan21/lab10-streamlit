@@ -1,45 +1,37 @@
 import streamlit as st
-import requests
+from huggingface_hub import InferenceClient
 from PIL import Image
-import io
 
-# Kuhain ang token mula sa secrets.toml
+# Direktang token
 HF_TOKEN = "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"
+
+# Gumagamit ng official HF client (mas maganda ang connection)
+client = InferenceClient(token=HF_TOKEN)
 
 # --- FUNCTIONS ---
 def get_chat_response(prompt):
-    """Magpadala ng message sa Chat AI"""
-    url = "https://api-inference.huggingface.co/models/google/flan-t5-large"
-    headers = {"Authorization": f"Bearer {HF_TOKEN}"}
-    
     try:
-        response = requests.post(url, headers=headers, json={"inputs": prompt})
-        if response.status_code == 200:
-            return response.json()[0]['generated_text']
-        elif response.status_code == 503:
-            return "⏳ The AI model is waking up. Please try again in 20 seconds."
-        else:
-            return "❌ Error communicating with the AI."
+        # I-wrap sa prompt para mas maganda ang sagot
+        full_prompt = f"Please answer concisely: {prompt}"
+        response = client.text_generation(
+            model="google/flan-t5-large",
+            prompt=full_prompt,
+            max_new_tokens=100
+        )
+        return response
     except Exception as e:
-        return f"❌ Error: {str(e)}"
+        return f"⏳ The AI model is waking up. Please try again in 20 seconds. (Error: {str(e)[:50]})"
 
 def generate_image(prompt):
-    """Mag-generate ng image gamit API"""
-    url = "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0"
-    headers = {"Authorization": f"Bearer {HF_TOKEN}"}
-    
     try:
-        response = requests.post(url, headers=headers, json={"inputs": prompt})
-        if response.status_code == 200:
-            return Image.open(io.BytesIO(response.content))
-        elif response.status_code == 503:
-            st.error("⏳ The Image model is loading in the server. Please wait 20 seconds and click Generate again.")
-            return None
-        else:
-            st.error("❌ Failed to generate image.")
-            return None
+        # Automatic na nagre-return ng PIL Image ang bagong method
+        image = client.text_to_image(
+            prompt=prompt,
+            model="stabilityai/stable-diffusion-xl-base-1.0"
+        )
+        return image
     except Exception as e:
-        st.error(f"❌ Error: {str(e)}")
+        st.error(f"⏳ The Image model is loading in the server. Please wait 20 seconds and click Generate again. ({str(e)[:50]})")
         return None
 
 # --- UI DESIGN ---
@@ -53,27 +45,21 @@ tab1, tab2 = st.tabs(["💬 Chat", "🖼️ Image Generator"])
 
 # --- TAB 1: CHAT ---
 with tab1:
-    # I-save ang chat history
     if "chat_history" not in st.session_state:
         st.session_state.chat_history = []
 
-    # I-display ang mga nakaraang messages
     for msg in st.session_state.chat_history:
         with st.chat_message(msg["role"]):
             st.write(msg["content"])
 
-    # Input box para sa user
     if user_input := st.chat_input("Type your message here..."):
-        # Idisplay ang mensahe ng user
         st.session_state.chat_history.append({"role": "user", "content": user_input})
         with st.chat_message("user"):
             st.write(user_input)
 
-        # Kunin ang sagot ng AI
         with st.spinner("Thinking..."):
             bot_reply = get_chat_response(user_input)
 
-        # Idisplay ang sagot ng AI
         st.session_state.chat_history.append({"role": "assistant", "content": bot_reply})
         with st.chat_message("assistant"):
             st.write(bot_reply)
@@ -91,6 +77,5 @@ with tab2:
         else:
             st.warning("Please type a description first.")
 
-# Footer
 st.divider()
 st.caption("Made with Streamlit | AI Models powered by Hugging Face API")
