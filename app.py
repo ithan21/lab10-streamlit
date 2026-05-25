@@ -1,54 +1,40 @@
 import streamlit as st
-import requests
+from huggingface_hub import InferenceClient
 from PIL import Image
-import io
 
 HF_TOKEN = "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"
 
+client = InferenceClient(token=HF_TOKEN, timeout=120)
+
 def get_chat_response(prompt):
-    url = "https://api-inference.huggingface.co/models/google/flan-t5-large"
-    headers = {"Authorization": f"Bearer {HF_TOKEN}"}
-    
     try:
-        # 120 seconds timeout para hindi sya agad mag-surrender kung naglo-load
-        response = requests.post(url, headers=headers, json={"inputs": f"Answer concisely: {prompt}"}, timeout=120)
-        
-        if response.status_code == 200:
-            data = response.json()
-            # Kunin ang generated text
-            if isinstance(data, list) and 'generated_text' in data[0]:
-                return data[0]['generated_text']
-            return str(data)
-        elif response.status_code == 503:
-            # Naglo-load pa ang model
-            return "⏳ The AI model is currently waking up. Please wait 30 seconds and type 'hello' again."
-        else:
-            return f"Error: {response.text}"
-    except requests.exceptions.Timeout:
-        return "⏳ Connection timed out. The model might be waking up. Please try again."
+        response = client.text_generation(
+            model="google/flan-t5-large", 
+            prompt=f"Answer concisely: {prompt}", 
+            max_new_tokens=100
+        )
+        return response
+    except StopIteration:
+        # Ito ang mangyayari kapag nakatulog ang model at naglo-load pa
+        return "⏳ The AI model is currently waking up. Please wait 30 seconds and type your message again."
     except Exception as e:
-        return f"Error: {str(e)}"
+        return f"Error: {repr(e)}"
 
 def generate_image(prompt):
-    url = "https://api-inference.huggingface.co/models/runwayml/stable-diffusion-v1-5"
-    headers = {"Authorization": f"Bearer {HF_TOKEN}"}
-    
     try:
-        response = requests.post(url, headers=headers, json={"inputs": prompt}, timeout=120)
-        
-        if response.status_code == 200:
-            return Image.open(io.BytesIO(response.content))
-        elif response.status_code == 503:
-            st.error("⏳ The Image model is waking up. Please wait 30 seconds and click Generate again.")
-            return None
-        else:
-            st.error(f"Error: {response.text}")
-            return None
-    except requests.exceptions.Timeout:
-        st.error("⏳ Connection timed out. Please try again.")
+        image = client.text_to_image(
+            prompt=prompt, 
+            model="runwayml/stable-diffusion-v1-5"
+        )
+        return image
+    except StopIteration:
+        st.error("⏳ The Image model is waking up. Wait 30 seconds and click Generate again.")
         return None
     except Exception as e:
-        st.error(f"Error: {str(e)}")
+        if "loading" in str(e).lower():
+            st.error("⏳ The Image model is waking up. Wait 30 seconds and click Generate again.")
+        else:
+            st.error(f"Error: {repr(e)}")
         return None
 
 # --- UI DESIGN ---
